@@ -1,0 +1,5 @@
+pytelegrambotapi>=4.26.0
+ipaddress>=1.0.23
+python-telegram-bot
+pandas
+openpyxl
