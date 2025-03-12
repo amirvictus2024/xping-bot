@@ -1,4 +1,3 @@
-
 import os
 import pickle
 import logging
@@ -33,23 +32,23 @@ def get_enhanced_admin_keyboard():
     # مدیریت کاربران و سرورها
     btn1 = types.InlineKeyboardButton("👥 مدیریت کاربران", callback_data="admin_users")
     btn2 = types.InlineKeyboardButton("🌐 مدیریت سرورها", callback_data="admin_servers")
-    
+
     # مدیریت مالی و آمار
     btn3 = types.InlineKeyboardButton("💳 تنظیمات پرداخت", callback_data="admin_payment_settings")
     btn4 = types.InlineKeyboardButton("📈 آمار و گزارش", callback_data="admin_stats")
-    
+
     # مدیریت تیکت و پیام‌ها
     btn5 = types.InlineKeyboardButton("🎫 مدیریت تیکت‌ها", callback_data="admin_tickets")
     btn6 = types.InlineKeyboardButton("📩 ارسال پیام گروهی", callback_data="admin_broadcast")
-    
+
     # مدیریت تخفیف‌ها
     btn7 = types.InlineKeyboardButton("🏷️ کدهای تخفیف", callback_data="admin_discount")
     btn8 = types.InlineKeyboardButton("🔄 تنظیم رفرال", callback_data="admin_referral")
-    
+
     # مدیریت سرویس‌ها و تراکنش‌ها
     btn9 = types.InlineKeyboardButton("💹 تراکنش‌ها", callback_data="admin_transactions")
     btn10 = types.InlineKeyboardButton("⏱️ مدیریت سرویس‌ها", callback_data="admin_services")
-    
+
     # مدیریت دسترسی‌ها
     btn11 = types.InlineKeyboardButton("➕ افزودن ادمین", callback_data="admin_add_admin")
     btn12 = types.InlineKeyboardButton("🚫 کاربران مسدود", callback_data="admin_blocked_users")
@@ -58,7 +57,10 @@ def get_enhanced_admin_keyboard():
     btn13 = types.InlineKeyboardButton("📊 گزارش اکسل", callback_data="admin_export_excel")
     btn14 = types.InlineKeyboardButton("📚 آموزش‌ها", callback_data="admin_tutorials")
     btn_uploader = types.InlineKeyboardButton("📤 آپلودر فایل", callback_data="admin_file_uploader")
-    
+
+    # مدیریت دکمه‌ها
+    btn_buttons = types.InlineKeyboardButton("🔘 مدیریت دکمه‌ها", callback_data="admin_buttons")
+
     # بازگشت
     btn15 = types.InlineKeyboardButton("🏠 بازگشت به اصلی", callback_data="back_to_main")
 
@@ -71,14 +73,87 @@ def get_enhanced_admin_keyboard():
     markup.add(btn11, btn12)
     markup.add(btn13, btn14)
     markup.add(btn_uploader)
+    markup.add(btn_buttons)
     markup.add(btn15)
 
     return markup
 
+# Get main menu buttons management keyboard
+def get_main_buttons_management_keyboard():
+    markup = types.InlineKeyboardMarkup(row_width=1)
+    data = load_data()
+
+    if 'main_buttons' not in data.get('settings', {}):
+        # Initialize default button settings if they don't exist
+        data['settings']['main_buttons'] = {
+            'buy_dns': {'title': '🌐 خرید DNS اختصاصی', 'enabled': True},
+            'buy_vpn': {'title': '🔒 خرید کانفیگ اختصاصی', 'enabled': True},
+            'account': {'title': '💼 حساب کاربری', 'enabled': True},
+            'referral': {'title': '👥 دعوت از دوستان', 'enabled': True},
+            'support': {'title': '💬 پشتیبانی', 'enabled': True},
+            'add_balance': {'title': '💰 افزایش موجودی', 'enabled': True},
+            'tutorials': {'title': '📚 آموزش‌ها', 'enabled': True},
+            'rules': {'title': '📜 قوانین و مقررات', 'enabled': True}
+        }
+        save_data(data)
+
+    # Create buttons for each main menu item
+    for button_id, button_info in data['settings']['main_buttons'].items():
+        status = "✅" if button_info.get('enabled', True) else "❌"
+        btn = types.InlineKeyboardButton(
+            f"{status} {button_info['title']}", 
+            callback_data=f"toggle_main_button_{button_id}"
+        )
+        markup.add(btn)
+
+    # Back button
+    back_btn = types.InlineKeyboardButton("🔙 بازگشت", callback_data="admin_buttons")
+    markup.add(back_btn)
+
+    return markup
+
+# Get tutorial buttons management keyboard
+def get_tutorial_buttons_management_keyboard():
+    markup = types.InlineKeyboardMarkup(row_width=1)
+    data = load_data()
+
+    for category_id, category in data['tutorials'].items():
+        status = "✅" if category.get('enabled', True) else "❌"
+        btn = types.InlineKeyboardButton(
+            f"{status} {category['title']}", 
+            callback_data=f"toggle_tutorial_{category_id}"
+        )
+        markup.add(btn)
+
+    # Back button
+    back_btn = types.InlineKeyboardButton("🔙 بازگشت", callback_data="admin_buttons")
+    markup.add(back_btn)
+
+    return markup
+
+# Toggle button visibility function
+def toggle_button_visibility(button_type, button_id):
+    data = load_data()
+
+    if button_type == 'main':
+        if button_id in data['settings']['main_buttons']:
+            current_state = data['settings']['main_buttons'][button_id].get('enabled', True)
+            data['settings']['main_buttons'][button_id]['enabled'] = not current_state
+            save_data(data)
+            return True
+    elif button_type == 'tutorial':
+        if button_id in data['tutorials']:
+            current_state = data['tutorials'][button_id].get('enabled', True)
+            data['tutorials'][button_id]['enabled'] = not current_state
+            save_data(data)
+            return True
+
+    return False
+
 # Advanced user management functions
 def get_advanced_users_management_keyboard():
     markup = types.InlineKeyboardMarkup(row_width=2)
-    
+
     btn1 = types.InlineKeyboardButton("🔍 جستجوی کاربر", callback_data="search_user")
     btn2 = types.InlineKeyboardButton("💰 افزایش موجودی", callback_data="add_user_balance")
     btn3 = types.InlineKeyboardButton("📊 لیست کاربران", callback_data="list_users")
@@ -86,12 +161,12 @@ def get_advanced_users_management_keyboard():
     btn5 = types.InlineKeyboardButton("📨 ارسال پیام به کاربر", callback_data="message_user")
     btn6 = types.InlineKeyboardButton("📜 تاریخچه خرید", callback_data="user_purchase_history")
     btn7 = types.InlineKeyboardButton("🔙 بازگشت", callback_data="admin_back")
-    
+
     markup.add(btn1, btn2)
     markup.add(btn3, btn4)
     markup.add(btn5, btn6)
     markup.add(btn7)
-    
+
     return markup
 
 # Enhanced discount management
@@ -103,7 +178,7 @@ def get_enhanced_discount_keyboard():
     btn3 = types.InlineKeyboardButton("⏱️ تخفیف زمان‌دار", callback_data="timed_discount")
     btn4 = types.InlineKeyboardButton("❌ حذف کد تخفیف", callback_data="delete_discount")
     btn5 = types.InlineKeyboardButton("🔙 بازگشت", callback_data="admin_back")
-    
+
     markup.add(btn1, btn2)
     markup.add(btn3, btn4)
     markup.add(btn5)
@@ -113,87 +188,193 @@ def get_enhanced_discount_keyboard():
 # Advanced server management 
 def get_advanced_server_management_keyboard():
     markup = types.InlineKeyboardMarkup(row_width=2)
-    
+
     btn1 = types.InlineKeyboardButton("➕ افزودن سرور جدید", callback_data="add_new_server")
     btn2 = types.InlineKeyboardButton("🔄 ویرایش سرور", callback_data="edit_server")
     btn3 = types.InlineKeyboardButton("📋 لیست سرورها", callback_data="list_servers")
     btn4 = types.InlineKeyboardButton("🔍 وضعیت سرورها", callback_data="server_status")
-    btn5 = types.InlineKeyboardButton("🔙 بازگشت", callback_data="admin_back")
-    
+    btn5 = types.InlineKeyboardButton("💰 قیمت سرورها", callback_data="server_pricing")
+    btn6 = types.InlineKeyboardButton("🌐 مدیریت لوکیشن‌ها", callback_data="manage_locations")
+    btn7 = types.InlineKeyboardButton("🚦 وضعیت فعال/غیرفعال", callback_data="toggle_server_status")
+    btn8 = types.InlineKeyboardButton("🔙 بازگشت", callback_data="admin_back")
+
     markup.add(btn1, btn2)
     markup.add(btn3, btn4)
-    markup.add(btn5)
-    
+    markup.add(btn5, btn6)
+    markup.add(btn7)
+    markup.add(btn8)
+
     return markup
+
+# Handle payment approval
+def handle_payment_approval(bot, request_id, approved=True):
+    """
+    Process payment approval or rejection
+    
+    Args:
+        bot: Telebot instance
+        request_id: Payment request ID
+        approved: True for approval, False for rejection
+    
+    Returns:
+        bool: Success status
+    """
+    data = load_data(force_reload=True)  # مطمئن شویم آخرین داده‌ها را داریم
+    
+    if 'payment_requests' not in data or request_id not in data['payment_requests']:
+        logging.error(f"Payment request {request_id} not found in database")
+        return False
+        
+    payment_request = data['payment_requests'][request_id]
+    user_id = payment_request['user_id']
+    amount = payment_request['amount']
+    transaction_id = payment_request.get('transaction_id')
+    
+    # برای اطمینان از تبدیل صحیح
+    user_id_str = str(user_id)
+    amount_int = int(amount)
+    
+    if approved:
+        # بررسی وجود کاربر
+        if user_id_str not in data['users']:
+            logging.error(f"User {user_id_str} not found in database when approving payment")
+            return False
+            
+        try:
+            # Update payment request status
+            data['payment_requests'][request_id]['status'] = 'approved'
+            
+            # Update user balance with explicit conversion
+            current_balance = int(data['users'][user_id_str].get('balance', 0))
+            new_balance = current_balance + amount_int
+            
+            # برای اطمینان، موجودی جدید را چاپ می‌کنیم
+            logging.info(f"Current balance: {current_balance}, Amount to add: {amount_int}, New balance: {new_balance}")
+            
+            data['users'][user_id_str]['balance'] = new_balance
+            
+            # Update transaction if exists
+            if transaction_id and transaction_id in data.get('transactions', {}):
+                data['transactions'][transaction_id]['status'] = 'approved'
+                
+            # Save data after updating balance
+            save_data(data)
+            
+            # Log the successful update
+            logging.info(f"Successfully updated balance for user {user_id_str}: +{amount_int}, new total: {data['users'][user_id_str]['balance']}")
+                
+            # Notify user
+            try:
+                bot.send_message(
+                    user_id,
+                    f"✅ درخواست افزایش موجودی شما به مبلغ {amount_int} تومان تایید شد.\n"
+                    f"💰 مبلغ به حساب شما اضافه شد.\n"
+                    f"💰 موجودی فعلی: {new_balance} تومان\n"
+                    f"🆔 شناسه پیگیری: {request_id}"
+                )
+            except Exception as e:
+                logging.error(f"Failed to notify user {user_id} about payment approval: {e}")
+        except Exception as e:
+            logging.error(f"Error during payment approval: {e}")
+            return False
+    else:
+        try:
+            # Update payment request status
+            data['payment_requests'][request_id]['status'] = 'rejected'
+            
+            # Update transaction if exists
+            if transaction_id and transaction_id in data.get('transactions', {}):
+                data['transactions'][transaction_id]['status'] = 'rejected'
+                
+            # Save data
+            save_data(data)
+            
+            # Notify user
+            try:
+                bot.send_message(
+                    user_id,
+                    f"❌ درخواست افزایش موجودی شما به مبلغ {amount} تومان رد شد.\n"
+                    f"🆔 شناسه پیگیری: {request_id}\n\n"
+                    f"لطفا برای اطلاعات بیشتر با پشتیبانی تماس بگیرید."
+                )
+            except Exception as e:
+                logging.error(f"Failed to notify user {user_id} about payment rejection: {e}")
+        except Exception as e:
+            logging.error(f"Error during payment rejection: {e}")
+            return False
+    
+    # برای اطمینان مجدداً ذخیره می‌کنیم
+    save_data(data)
+    return True
 
 # Ticket management system
 def get_ticket_management_keyboard():
     markup = types.InlineKeyboardMarkup(row_width=2)
-    
+
     btn1 = types.InlineKeyboardButton("📬 تیکت‌های جدید", callback_data="new_tickets")
     btn2 = types.InlineKeyboardButton("📝 تیکت‌های در حال بررسی", callback_data="pending_tickets")
     btn3 = types.InlineKeyboardButton("✅ تیکت‌های پاسخ داده شده", callback_data="answered_tickets")
     btn4 = types.InlineKeyboardButton("❌ تیکت‌های بسته", callback_data="closed_tickets")
     btn5 = types.InlineKeyboardButton("🔙 بازگشت", callback_data="admin_back")
-    
+
     markup.add(btn1, btn2)
     markup.add(btn3, btn4)
     markup.add(btn5)
-    
+
     return markup
 
 # Transaction management
 def get_transaction_management_keyboard():
     markup = types.InlineKeyboardMarkup(row_width=2)
-    
+
     btn1 = types.InlineKeyboardButton("✅ تراکنش‌های موفق", callback_data="successful_transactions")
     btn2 = types.InlineKeyboardButton("❌ تراکنش‌های ناموفق", callback_data="failed_transactions")
     btn3 = types.InlineKeyboardButton("⏳ تراکنش‌های در انتظار", callback_data="pending_transactions")
     btn4 = types.InlineKeyboardButton("📊 گزارش مالی", callback_data="financial_report")
     btn5 = types.InlineKeyboardButton("🔙 بازگشت", callback_data="admin_back")
-    
+
     markup.add(btn1, btn2)
     markup.add(btn3, btn4)
     markup.add(btn5)
-    
+
     return markup
 
 # Service management
 def get_service_management_keyboard():
     markup = types.InlineKeyboardMarkup(row_width=2)
-    
+
     btn1 = types.InlineKeyboardButton("📝 سرویس‌های فعال", callback_data="active_services")
     btn2 = types.InlineKeyboardButton("⏱️ سرویس‌های نزدیک انقضا", callback_data="expiring_services")
     btn3 = types.InlineKeyboardButton("⚠️ ارسال یادآوری", callback_data="send_expiry_reminder")
     btn4 = types.InlineKeyboardButton("🔄 تمدید دستی", callback_data="manual_renew")
     btn5 = types.InlineKeyboardButton("🔙 بازگشت", callback_data="admin_back")
-    
+
     markup.add(btn1, btn2)
     markup.add(btn3, btn4)
     markup.add(btn5)
-    
+
     return markup
 
 # Generate Excel report for transactions
 def generate_transactions_excel(bot, chat_id):
     data = load_data()
-    
+
     if not data or 'transactions' not in data or not data['transactions']:
         bot.send_message(chat_id, "❌ هیچ تراکنشی یافت نشد!")
         return
-    
+
     transactions = data['transactions']
-    
+
     # Convert to dataframe
     transaction_records = []
     for tx_id, tx_info in transactions.items():
         user_id = tx_info.get('user_id', 'نامشخص')
         user_name = 'نامشخص'
-        
+
         # Try to get user name if user exists
         if str(user_id) in data.get('users', {}):
             user_name = data['users'][str(user_id)].get('first_name', 'نامشخص')
-        
+
         record = {
             'شناسه تراکنش': tx_id,
             'کاربر': f"{user_name} ({user_id})",
@@ -202,20 +383,20 @@ def generate_transactions_excel(bot, chat_id):
             'وضعیت': tx_info.get('status', 'نامشخص'),
             'زمان': tx_info.get('timestamp', 'نامشخص')
         }
-        
+
         if 'discount_code' in tx_info and tx_info['discount_code']:
             record['کد تخفیف'] = tx_info['discount_code']
             record['مقدار تخفیف'] = tx_info.get('discount_amount', 0)
             record['مبلغ اصلی'] = tx_info.get('original_amount', 0)
-        
+
         transaction_records.append(record)
-    
+
     # Create Excel file
     df = pd.DataFrame(transaction_records)
     excel_file = io.BytesIO()
     df.to_excel(excel_file, index=False, engine='openpyxl')
     excel_file.seek(0)
-    
+
     # Send Excel file
     bot.send_document(
         chat_id,
@@ -227,13 +408,13 @@ def generate_transactions_excel(bot, chat_id):
 # Generate user report in Excel
 def generate_users_excel(bot, chat_id):
     data = load_data()
-    
+
     if not data or 'users' not in data or not data['users']:
         bot.send_message(chat_id, "❌ هیچ کاربری یافت نشد!")
         return
-    
+
     users = data['users']
-    
+
     # Convert to dataframe
     user_records = []
     for user_id, user_info in users.items():
@@ -249,13 +430,13 @@ def generate_users_excel(bot, chat_id):
             'تاریخ عضویت': user_info.get('join_date', 'نامشخص')
         }
         user_records.append(record)
-    
+
     # Create Excel file
     df = pd.DataFrame(user_records)
     excel_file = io.BytesIO()
     df.to_excel(excel_file, index=False, engine='openpyxl')
     excel_file.seek(0)
-    
+
     # Send Excel file
     bot.send_document(
         chat_id,
@@ -269,26 +450,26 @@ def process_add_new_server(bot, admin_states, user_id, message_text):
     # Parse the server info from the message
     lines = message_text.strip().split('\n')
     server_info = {}
-    
+
     for line in lines:
         if ':' in line:
             key, value = line.split(':', 1)
             server_info[key.strip()] = value.strip()
-    
+
     # Check for required fields
     required_fields = ['name', 'location', 'price']
     missing_fields = [field for field in required_fields if field not in server_info]
-    
+
     if missing_fields:
         bot.send_message(
             user_id, 
             f"❌ اطلاعات ناقص است. لطفاً فیلدهای زیر را تکمیل کنید: {', '.join(missing_fields)}"
         )
         return False
-    
+
     # Add the server to the data
     data = load_data()
-    
+
     # For a location
     if admin_states[user_id].get('server_type') == 'location':
         location_id = server_info['location'].lower().replace(' ', '_')
@@ -297,22 +478,22 @@ def process_add_new_server(bot, admin_states, user_id, message_text):
             'price': int(server_info['price']),
             'enabled': True
         }
-    
-    
-    
+
+
+
     save_data(data)
     return True
 
 # Get user purchase history
 def get_user_purchase_history(user_id):
     data = load_data()
-    
+
     if str(user_id) not in data['users']:
         return "❌ کاربری با این شناسه یافت نشد!"
-    
+
     user = data['users'][str(user_id)]
     history_text = f"📜 تاریخچه خرید کاربر {user_id}:\n\n"
-    
+
     # Add DNS purchase history
     if user['dns_configs']:
         history_text += "🌐 DNS های خریداری شده:\n"
@@ -320,7 +501,7 @@ def get_user_purchase_history(user_id):
             history_text += f"{i+1}. {dns.get('location', 'نامشخص')} - {dns.get('created_at', 'نامشخص')}\n"
     else:
         history_text += "🌐 تاکنون DNS خریداری نشده است.\n"
-    
+
     # Add VPN purchase history
     if user.get('wireguard_configs', []):
         history_text += "\n🔒 VPN های خریداری شده:\n"
@@ -328,10 +509,10 @@ def get_user_purchase_history(user_id):
             history_text += f"{i+1}. {vpn.get('location_name', 'نامشخص')} - {vpn.get('created_at', 'نامشخص')}\n"
     else:
         history_text += "\n🔒 تاکنون VPN خریداری نشده است.\n"
-    
+
     # Add transaction history
     transactions = [tx for tx_id, tx in data.get('transactions', {}).items() if tx.get('user_id') == int(user_id)]
-    
+
     if transactions:
         history_text += "\n💰 تراکنش‌ها:\n"
         for i, tx in enumerate(sorted(transactions, key=lambda x: x.get('timestamp', ''), reverse=True)):
@@ -339,7 +520,7 @@ def get_user_purchase_history(user_id):
             history_text += f"{i+1}. {status} {tx.get('amount', 0)} تومان - {tx.get('timestamp', 'نامشخص')}\n"
     else:
         history_text += "\n💰 تاکنون تراکنشی انجام نشده است.\n"
-    
+
     return history_text
 
 # Send reminder to users with expiring services
@@ -347,14 +528,14 @@ def send_expiry_reminders(bot):
     data = load_data()
     now = datetime.now()
     reminder_count = 0
-    
+
     for user_id, user_info in data['users'].items():
         # Check DNS configs for expiration
         for dns in user_info.get('dns_configs', []):
             if 'expiry_date' in dns:
                 expiry = datetime.strptime(dns['expiry_date'], '%Y-%m-%d %H:%M:%S')
                 days_left = (expiry - now).days
-                
+
                 if 0 <= days_left <= 3:  # Send reminder if 3 or fewer days left
                     reminder_text = (
                         f"⚠️ یادآوری مهم\n\n"
@@ -362,19 +543,19 @@ def send_expiry_reminders(bot):
                         f"تا {days_left} روز دیگر منقضی خواهد شد.\n\n"
                         f"لطفاً نسبت به تمدید آن اقدام نمایید."
                     )
-                    
+
                     try:
                         bot.send_message(int(user_id), reminder_text)
                         reminder_count += 1
                     except:
                         pass  # Skip if user has blocked the bot
-        
+
         # Check VPN configs for expiration
         for vpn in user_info.get('wireguard_configs', []):
             if 'expiry_date' in vpn:
                 expiry = datetime.strptime(vpn['expiry_date'], '%Y-%m-%d %H:%M:%S')
                 days_left = (expiry - now).days
-                
+
                 if 0 <= days_left <= 3:  # Send reminder if 3 or fewer days left
                     reminder_text = (
                         f"⚠️ یادآوری مهم\n\n"
@@ -382,31 +563,31 @@ def send_expiry_reminders(bot):
                         f"تا {days_left} روز دیگر منقضی خواهد شد.\n\n"
                         f"لطفاً نسبت به تمدید آن اقدام نمایید."
                     )
-                    
+
                     try:
                         bot.send_message(int(user_id), reminder_text)
                         reminder_count += 1
                     except:
                         pass  # Skip if user has blocked the bot
-    
+
     return reminder_count
 # DNS Range Management Functions
 
 def show_dns_ranges_admin(call):
     """Show DNS ranges statistics for admin"""
     from main import load_dns_ranges, bot
-    
+
     dns_ranges = load_dns_ranges()
-    
+
     keyboard = types.InlineKeyboardMarkup()
     for location in dns_ranges.keys():
         keyboard.add(types.InlineKeyboardButton(
             f"🌐 {location.capitalize()}", 
             callback_data=f"dns_range_detail_{location}"
         ))
-    
+
     keyboard.add(types.InlineKeyboardButton("🔙 برگشت", callback_data="admin_back"))
-    
+
     bot.edit_message_text(
         "📊 مدیریت رنج‌های DNS\n\n"
         "لوکیشن مورد نظر را انتخاب کنید:",
@@ -418,43 +599,43 @@ def show_dns_ranges_admin(call):
 def show_dns_range_detail(call, location):
     """Show DNS range details for a specific location"""
     from main import load_dns_ranges, bot, get_dns_ranges_summary
-    
+
     dns_ranges = load_dns_ranges()
     summary = get_dns_ranges_summary()
-    
+
     if location not in dns_ranges:
         bot.answer_callback_query(call.id, "❌ لوکیشن مورد نظر پیدا نشد!")
         return
-    
+
     # Get the data for this location
     location_data = dns_ranges[location]
     summary_data = summary[location]
-    
+
     # Prepare message
     message = f"📍 آمار رنج‌های <b>{location.upper()}</b>:\n\n"
     message += f"🔹 تعداد رنج IPv4: {summary_data['ipv4_ranges']}\n"
     message += f"🔹 تعداد تقریبی IP های IPv4: {summary_data['estimated_ipv4_ips']:,}\n"
     message += f"🔹 تعداد پرفیکس IPv6: {summary_data['ipv6_ranges']}\n\n"
-    
+
     # Show sample ranges
     message += "📌 نمونه رنج‌های IPv4:\n"
     for i, cidr in enumerate(location_data['ipv4'][:5]):
         message += f"   {i+1}. {cidr}\n"
-    
+
     if len(location_data['ipv4']) > 5:
         message += f"   ... و {len(location_data['ipv4']) - 5} رنج دیگر\n\n"
-    
+
     message += "📌 نمونه رنج‌های IPv6:\n"
     for i, cidr in enumerate(location_data['ipv6'][:5]):
         message += f"   {i+1}. {cidr}\n"
-    
+
     if len(location_data['ipv6']) > 5:
         message += f"   ... و {len(location_data['ipv6']) - 5} رنج دیگر"
-    
+
     # Create keyboard
     keyboard = types.InlineKeyboardMarkup()
     keyboard.add(types.InlineKeyboardButton("🔙 برگشت به لیست لوکیشن‌ها", callback_data="admin_dns_ranges"))
-    
+
     bot.edit_message_text(
         message,
         call.message.chat.id,

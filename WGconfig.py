@@ -10,11 +10,11 @@ PERSISTENT_KEEPALIVE = 15  # Seconds
 
 # Client settings
 CLIENT_DNS_PRIMARY = "78.157.42.100"  # Primary DNS server
-CLIENT_IPV4_BASE = "10.0.0.0/8"  # Base IPv4 address for clients
-CLIENT_IPV4_ADDITIONAL_PREFIX = "10.202.10."  # Prefix for additional IPv4 addresses
+CLIENT_IPV4_BASE = "10.0.0.2/16"  # Base IPv4 address for clients
+CLIENT_IPV4_ADDITIONAL_PREFIX = "10.202.10.10"  # Prefix for additional IPv4 addresses
 
 # DNS configuration
-DEFAULT_IPV6_PREFIX = "fd00::"  # IPv6 prefix for client addresses
+# IPv6 prefix will be generated dynamically from location ranges
 
 # Security settings
 ALLOWED_IPS = ["0.0.0.0/3", "::/3"]  # Allowed IPs for traffic routing
@@ -27,13 +27,21 @@ def generate_wireguard_keys():
     """
     import base64
     import os
+    import subprocess
     
-    private_key = base64.b64encode(os.urandom(32)).decode('utf-8')
-    # This is a simplified version for demonstration
-    # In production, you should derive the public key from the private key using WireGuard's algorithms
-    public_key = base64.b64encode(os.urandom(32)).decode('utf-8')
-    
-    return private_key, public_key
+    try:
+        # Try to use actual WireGuard tools if available
+        private_key = subprocess.check_output(['wg', 'genkey']).decode('utf-8').strip()
+        public_key = subprocess.check_output(['echo', private_key, '|', 'wg', 'pubkey']).decode('utf-8').strip()
+        return private_key, public_key
+    except (subprocess.SubprocessError, FileNotFoundError):
+        # Fallback to simplified version
+        private_key = base64.b64encode(os.urandom(32)).decode('utf-8')
+        # This is a simplified version for demonstration
+        # In production, you should derive the public key from the private key using WireGuard's algorithms
+        public_key = base64.b64encode(os.urandom(32)).decode('utf-8')
+        
+        return private_key, public_key
 
 # Generate WireGuard config
 def create_wireguard_config(private_key, public_key, endpoint, client_ipv4, client_ipv4_add, client_ipv6, dns_servers):
@@ -52,7 +60,8 @@ def create_wireguard_config(private_key, public_key, endpoint, client_ipv4, clie
     Returns:
         str: WireGuard configuration content
     """
-    dns_list = ", ".join(dns_servers)
+    # WireGuard expects comma-separated DNS servers without spaces
+    dns_list = ",".join(dns_servers)
     allowed_ips = ", ".join(ALLOWED_IPS)
     
     config = f"""[Interface]
