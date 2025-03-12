@@ -710,7 +710,14 @@ def callback_handler(call):
             call.message.chat.id,
             call.message.message_id,
             reply_markup=get_main_keyboard(call.from_user.id)
-        )
+        ),
+        
+        # File uploader related callbacks
+        "upload_photo": lambda: start_file_upload(call, "photo"),
+        "upload_video": lambda: start_file_upload(call, "video"),
+        "upload_document": lambda: start_file_upload(call, "document"),
+        "list_files": lambda: show_uploaded_files(call),
+        "create_share_link": lambda: start_create_share_link(call)
     }
 
     # Try to get direct handler first
@@ -765,14 +772,96 @@ def callback_handler(call):
     # Admin functions
     elif call.data.startswith("admin_") and check_admin(call.from_user.id):
         process_admin_functions(call)
+    elif call.data == "broadcast_all" and check_admin(call.from_user.id):
+        admin_states[call.from_user.id] = {'state': 'waiting_broadcast_message'}
+        bot.edit_message_text(
+            "📢 ارسال پیام به همه کاربران\n\n"
+            "لطفاً متن پیامی که می‌خواهید به تمام کاربران ارسال شود را وارد کنید:",
+            call.message.chat.id,
+            call.message.message_id
+        )
+    elif call.data == "confirm_broadcast" and check_admin(call.from_user.id):
+        if call.from_user.id in admin_states and 'broadcast_text' in admin_states[call.from_user.id]:
+            broadcast_text = admin_states[call.from_user.id]['broadcast_text']
+            data = load_data()
+            
+            # Save broadcast to history
+            if 'broadcast_messages' not in data:
+                data['broadcast_messages'] = []
+            
+            data['broadcast_messages'].append({
+                'text': broadcast_text,
+                'timestamp': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+                'sent_by': call.from_user.id
+            })
+            
+            # Send to all users
+            success = 0
+            failed = 0
+            for user_id in data['users']:
+                try:
+                    bot.send_message(
+                        int(user_id),
+                        f"📢 پیام مهم از مدیریت:\n\n{broadcast_text}"
+                    )
+                    success += 1
+                except Exception as e:
+                    failed += 1
+                    logging.error(f"Failed to send broadcast to {user_id}: {e}")
+            
+            save_data(data)
+            
+            bot.edit_message_text(
+                f"✅ پیام با موفقیت به {success} کاربر ارسال شد.\n"
+                f"❌ ارسال به {failed} کاربر ناموفق بود.",
+                call.message.chat.id,
+                call.message.message_id
+            )
+            
+            # Clear state
+            del admin_states[call.from_user.id]
+    elif call.data == "view_broadcasts" and check_admin(call.from_user.id):
+        data = load_data()
+        broadcasts = data.get('broadcast_messages', [])
+        
+        markup = types.InlineKeyboardMarkup(row_width=1)
+        back_btn = types.InlineKeyboardButton("🔙 بازگشت", callback_data="admin_broadcast")
+        markup.add(back_btn)
+        
+        if broadcasts:
+            broadcasts_text = "📊 پیام‌های سراسری ارسال شده:\n\n"
+            for i, broadcast in enumerate(reversed(broadcasts[-10:])):  # Show last 10 messages
+                broadcasts_text += f"{i+1}. تاریخ: {broadcast['timestamp']}\n"
+                broadcasts_text += f"📄 متن: {broadcast['text'][:50]}...\n\n"
+        else:
+            broadcasts_text = "📊 تاریخچه پیام‌های سراسری خالی است."
+        
+        bot.edit_message_text(
+            broadcasts_text,
+            call.message.chat.id,
+            call.message.message_id,
+            reply_markup=markup
+        )
+    elif call.data == "change_referral_reward" and check_admin(call.from_user.id):
+        admin_states[call.from_user.id] = {'state': 'waiting_referral_amount'}
+        data = load_data()
+        current_reward = data['settings']['referral_reward']
+        
+        bot.edit_message_text(
+            f"🎁 تغییر مبلغ پاداش رفرال\n\n"
+            f"مبلغ فعلی: {current_reward} تومان\n\n"
+            f"لطفاً مبلغ جدید پاداش رفرال را به تومان وارد کنید:",
+            call.message.chat.id,
+            call.message.message_id
+        )
 
     # Payment flow
     elif call.data == "add_balance":
         bot.edit_message_text(
             "💰 افزایش موجودی\n\n"
-            "💳 لطفاً یکیاز پلن‌های زیر را انتخاب کنید یا مبلغ دلخواه خود را وارد نمایید:",
+            "💳 لطفاً یکی از پلن‌های زیر را انتخاب کنید یا مبلغ دلخواه خود را وارد نمایید:",
             call.message.chat.id,
-            call.message.messageid,
+            call.message.message_id,
             reply_markup=get_payment_plans_keyboard(),
             parse_mode="HTML"
         )
@@ -1464,6 +1553,8 @@ def process_admin_functions(call):
         "add_tutorial_": lambda: start_add_tutorial_file(call),
         "admin_file_": lambda: send_file_to_user(call.message, call.data.replace("admin_file_", "")),
         "change_card_number": lambda: handle_change_card_number_callback(call),
+        "add_balance_user": lambda: handle_add_balance_to_user(call),
+        "gift_all_users": lambda: handle_gift_all_users_menu(call),
 
         # Added missing handlers for admin functions:
         "admin_broadcast": lambda: handle_broadcast_menu(call),
@@ -1481,20 +1572,79 @@ def process_admin_functions(call):
         "admin_export_excel": lambda: handle_export_excel_menu(call),
     }
 
-    # Check if the callback data starts with a key in admin_handlers
-    for prefix, handler in {
-        "admin_tutorial_": lambda: show_tutorial_files(call.message, call.data.replace("admin_tutorial_", ""), True),
-        "add_tutorial_": lambda: start_add_tutorial_file(call),
-        "admin_file_": lambda: send_file_to_user(call.message, call.data.replace("admin_file_", ""))
-    }.items():
-        if call.data.startswith(prefix):
-            return handler()
-
-    # Try to get direct handler first
+    # First check for direct matches in the dictionary
     if call.data in admin_handlers:
         return admin_handlers[call.data]()
+    
+    # Then check for prefix matches using starts with
+    if call.data.startswith("admin_tutorial_"):
+        return show_tutorial_files(call.message, call.data.replace("admin_tutorial_", ""), True)
+    elif call.data.startswith("add_tutorial_"):
+        return start_add_tutorial_file(call)
+    elif call.data.startswith("admin_file_"):
+        return send_file_to_user(call.message, call.data.replace("admin_file_", ""))
+    elif call.data.startswith("export_"):
+        if call.data == "export_users":
+            return generate_users_excel(bot, call.message.chat.id)
+        elif call.data == "export_transactions":
+            return generate_transactions_excel(bot, call.message.chat.id)
+    elif call.data == "block_user":
+        admin_states[call.from_user.id] = {'state': 'waiting_block_user'}
+        bot.edit_message_text(
+            "🚫 مسدود کردن کاربر\n\n"
+            "لطفاً شناسه (آیدی عددی) کاربر مورد نظر را وارد کنید:",
+            call.message.chat.id,
+            call.message.message_id
+        )
+    elif call.data == "user_search":
+        admin_states[call.from_user.id] = {'state': 'waiting_search_user'}
+        bot.edit_message_text(
+            "🔍 جستجوی کاربر\n\n"
+            "لطفاً شناسه، نام یا نام کاربری کاربر مورد نظر را وارد کنید:",
+            call.message.chat.id,
+            call.message.message_id
+        )
+    elif call.data == "user_history":
+        admin_states[call.from_user.id] = {'state': 'waiting_history_user_id'}
+        bot.edit_message_text(
+            "📊 تاریخچه خرید کاربر\n\n"
+            "لطفاً شناسه (آیدی عددی) کاربر مورد نظر را وارد کنید:",
+            call.message.chat.id,
+            call.message.message_id
+        )
+    elif call.data == "add_discount":
+        admin_states[call.from_user.id] = {'state': 'waiting_discount_code'}
+        bot.edit_message_text(
+            "🏷️ افزودن کد تخفیف جدید\n\n"
+            "لطفاً کد تخفیف را وارد کنید (فقط از حروف انگلیسی و اعداد استفاده کنید):",
+            call.message.chat.id,
+            call.message.message_id
+        )
+    elif call.data == "send_reminder":
+        send_expiry_reminders(bot)
+        bot.answer_callback_query(call.id, "یادآوری‌ها با موفقیت ارسال شد!", show_alert=True)
+    
+    # Handler for other admin functions that aren't implemented yet
+    else:
+        bot.answer_callback_query(call.id, "این قابلیت در حال توسعه است. لطفاً بعداً مجدداً تلاش کنید.", show_alert=True)
 
-    # Handle other admin functions...
+def handle_add_balance_to_user(call):
+    admin_states[call.from_user.id] = {'state': 'waiting_user_id_for_balance'}
+    bot.edit_message_text(
+        "💰 افزایش موجودی کاربر\n\n"
+        "لطفاً شناسه (آیدی عددی) کاربر مورد نظر را وارد کنید:",
+        call.message.chat.id,
+        call.message.message_id
+    )
+
+def handle_gift_all_users_menu(call):
+    admin_states[call.from_user.id] = {'state': 'waiting_gift_amount'}
+    bot.edit_message_text(
+        "🎁 اهدای موجودی به تمام کاربران\n\n"
+        "لطفاً مبلغی که می‌خواهید به حساب تمام کاربران اضافه شود را به تومان وارد کنید:",
+        call.message.chat.id,
+        call.message.message_id
+    )
 
 def start_file_upload(call, file_type):
     admin_states[call.from_user.id] = {'state': 'waiting_file', 'file_type': file_type}
@@ -1869,7 +2019,19 @@ def get_discount_keyboard():
 
 # Generate users management keyboard
 def get_users_management_keyboard():
-    return get_advanced_users_management_keyboard()
+    markup = types.InlineKeyboardMarkup(row_width=1)
+    
+    btn1 = types.InlineKeyboardButton("🔍 جستجوی کاربر", callback_data="user_search")
+    btn2 = types.InlineKeyboardButton("💰 افزایش موجودی کاربر", callback_data="add_balance_user")
+    btn3 = types.InlineKeyboardButton("🎁 اهدای موجودی به همه کاربران", callback_data="gift_all_users")
+    btn4 = types.InlineKeyboardButton("📊 تاریخچه خرید کاربر", callback_data="user_history")
+    btn5 = types.InlineKeyboardButton("📱 ارسال پیام به کاربر", callback_data="message_user")
+    btn6 = types.InlineKeyboardButton("🚫 مسدود کردن کاربر", callback_data="block_user")
+    btn7 = types.InlineKeyboardButton("🔙 بازگشت", callback_data="admin_back")
+    
+    markup.add(btn1, btn2, btn3, btn4, btn5, btn6, btn7)
+    
+    return markup
 
 # Discount code handlers
 @bot.message_handler(func=lambda message: message.from_user.id in admin_states and admin_states[message.from_user.id]['state'] == 'waiting_discount_code')
