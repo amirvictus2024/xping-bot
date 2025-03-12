@@ -42,7 +42,7 @@ default_data = {
     'admins': [6712954701],  # Admin Telegram IDs
     'payment_requests': {},
     'settings': {
-        'payment_card': '6037-9975-9874-5612',
+        'payment_card': '6219-8619-4308-4037',
         'servers_enabled': True,
         'referral_reward': 2000,  # Tomans (2000 تومان)
     },
@@ -300,7 +300,7 @@ def check_admin(user_id):
     # Ensure we're comparing the same data types (integers)
     admin_ids = [int(admin_id) if isinstance(admin_id, str) else admin_id for admin_id in data['admins']]
     is_admin = user_id_int in admin_ids
-    print(f"Checking admin for user {user_id_int}: {is_admin}, admins: {admin_ids}")
+    logger.info(f"Checking admin for user {user_id_int}: {is_admin}, admins: {admin_ids}")
     return is_admin
 
 def add_admin(user_id):
@@ -497,11 +497,12 @@ def get_file_uploader_keyboard():
     btn2 = types.InlineKeyboardButton("🎥 ویدیو", callback_data="upload_video")
     btn3 = types.InlineKeyboardButton("📄 فایل", callback_data="upload_document")
     btn4 = types.InlineKeyboardButton("📋 لیست فایل‌ها", callback_data="list_files")
-    btn5 = types.InlineKeyboardButton("🔙 بازگشت", callback_data="admin_back")
+    btn5 = types.InlineKeyboardButton("🔗 ایجاد لینک اشتراک‌گذاری", callback_data="create_share_link")
+    btn6 = types.InlineKeyboardButton("🔙 بازگشت", callback_data="admin_back")
 
     markup.add(btn1, btn2, btn3)
-    markup.add(btn4)
-    markup.add(btn5)
+    markup.add(btn4, btn5)
+    markup.add(btn6)
 
     return markup
 
@@ -769,9 +770,9 @@ def callback_handler(call):
     elif call.data == "add_balance":
         bot.edit_message_text(
             "💰 افزایش موجودی\n\n"
-            "💳 لطفاً یکی از پلن‌های زیر را انتخاب کنید یا مبلغ دلخواه خود را وارد نمایید:",
+            "💳 لطفاً یکیاز پلن‌های زیر را انتخاب کنید یا مبلغ دلخواه خود را وارد نمایید:",
             call.message.chat.id,
-            call.message.message_id,
+            call.message.messageid,
             reply_markup=get_payment_plans_keyboard(),
             parse_mode="HTML"
         )
@@ -798,6 +799,35 @@ def callback_handler(call):
     # Go to account page
     elif call.data == "goto_account":
         show_account_info(call.message, call.from_user.id)
+
+    # Share file functions
+    elif call.data.startswith("share_file_"):
+        handle_share_file_selection(call)
+    elif call.data.startswith("copy_link_"):
+        handle_copy_link(call)
+    elif call.data.startswith("preview_file_"):
+        handle_preview_file(call)
+    # Go to account page
+    elif call.data == "goto_account":
+        show_account_info(call.message, call.from_user.id)
+
+    # Card number change
+    elif call.data == "change_card_number" and check_admin(call.from_user.id):
+        admin_states[call.from_user.id] = {'state': 'waiting_card_number'}
+        data = load_data()
+        current_card = data['settings']['payment_card']
+
+        bot.edit_message_text(
+            f"💳 تغییر شماره کارت\n\n"
+            f"شماره کارت فعلی: <code>{current_card}</code>\n\n"
+            f"لطفاً شماره کارت جدید را وارد کنید:",
+            call.message.chat.id,
+            call.message.message_id,
+            parse_mode="HTML"
+        )
+
+    else:
+        bot.answer_callback_query(call.id, "⚠️ دستور نامعتبر!", show_alert=True)
 
 def show_account_info(message, user_id):
     user = get_user(user_id)
@@ -1432,8 +1462,33 @@ def process_admin_functions(call):
         "admin_tutorials": lambda: show_tutorial_categories(call.message, True),
         "admin_tutorial_": lambda: show_tutorial_files(call.message, call.data.replace("admin_tutorial_", ""), True),
         "add_tutorial_": lambda: start_add_tutorial_file(call),
-        "admin_file_": lambda: send_file_to_user(call.message, call.data.replace("admin_file_", ""))
+        "admin_file_": lambda: send_file_to_user(call.message, call.data.replace("admin_file_", "")),
+        "change_card_number": lambda: handle_change_card_number_callback(call),
+
+        # Added missing handlers for admin functions:
+        "admin_broadcast": lambda: handle_broadcast_menu(call),
+        "admin_tickets": lambda: handle_tickets_menu(call),
+        "admin_discount": lambda: handle_discount_menu(call),
+        "admin_users": lambda: handle_users_menu(call),
+        "admin_servers": lambda: handle_servers_menu(call),
+        "admin_payment_settings": lambda: handle_payment_settings_menu(call),
+        "admin_stats": lambda: handle_stats_menu(call),
+        "admin_referral": lambda: handle_referral_menu(call),
+        "admin_transactions": lambda: handle_transactions_menu(call),
+        "admin_services": lambda: handle_services_menu(call),
+        "admin_add_admin": lambda: handle_add_admin_menu(call),
+        "admin_blocked_users": lambda: handle_blocked_users_menu(call),
+        "admin_export_excel": lambda: handle_export_excel_menu(call),
     }
+
+    # Check if the callback data starts with a key in admin_handlers
+    for prefix, handler in {
+        "admin_tutorial_": lambda: show_tutorial_files(call.message, call.data.replace("admin_tutorial_", ""), True),
+        "add_tutorial_": lambda: start_add_tutorial_file(call),
+        "admin_file_": lambda: send_file_to_user(call.message, call.data.replace("admin_file_", ""))
+    }.items():
+        if call.data.startswith(prefix):
+            return handler()
 
     # Try to get direct handler first
     if call.data in admin_handlers:
@@ -1473,23 +1528,181 @@ def show_uploaded_files(call):
 
 
 def start_create_share_link(call):
-    admin_states[call.from_user.id] = {'state': 'waiting_file_id'}
+    data = load_data()
+    if not data.get('uploaded_files'):
+        bot.answer_callback_query(call.id, "هیچ فایلی برای اشتراک‌گذاری وجود ندارد!", show_alert=True)
+        return
+
+    # ایجاد کیبورد برای انتخاب فایل از لیست
+    markup = types.InlineKeyboardMarkup(row_width=1)
+    for file_id, file_info in data['uploaded_files'].items():
+        btn = types.InlineKeyboardButton(
+            f"📄 {file_info['title']} ({file_info['type']})",
+            callback_data=f"share_file_{file_id}"
+        )
+        markup.add(btn)
+
+    back_btn = types.InlineKeyboardButton("🔙 بازگشت", callback_data="admin_file_uploader")
+    markup.add(back_btn)
+
     bot.edit_message_text(
         "🔗 ایجاد لینک اشتراک‌گذاری\n\n"
-        "لطفاً شناسه فایل مورد نظر را وارد کنید:",
+        "لطفاً فایل مورد نظر را از لیست زیر انتخاب کنید:",
         call.message.chat.id,
-        call.message.message_id
+        call.message.message_id,
+        reply_markup=markup
     )
 
-def start_add_tutorial_file(call):
-    category_id = call.data.replace("add_tutorial_", "")
-    admin_states[call.from_user.id] = {'state': 'waiting_tutorial_file', 'category_id': category_id}
+@bot.callback_query_handler(func=lambda call: call.data.startswith("share_file_"))
+def handle_share_file_selection(call):
+    file_id = call.data.replace("share_file_", "")
+    data = load_data()
+
+    if file_id in data['uploaded_files']:
+        bot_username = bot.get_me().username
+        share_link = f"https://t.me/{bot_username}?start={file_id}"
+
+        # کیبورد برای کپی لینک و بازگشت
+        markup = types.InlineKeyboardMarkup(row_width=1)
+        copy_btn = types.InlineKeyboardButton("📋 کپی لینک", callback_data=f"copy_link_{file_id}")
+        preview_btn = types.InlineKeyboardButton("👁️ پیش‌نمایش فایل", callback_data=f"preview_file_{file_id}")
+        back_btn = types.InlineKeyboardButton("🔙 بازگشت", callback_data="create_share_link")
+        markup.add(copy_btn, preview_btn, back_btn)
+
+        file_info = data['uploaded_files'][file_id]
+        bot.edit_message_text(
+            f"✅ لینک اشتراک‌گذاری ایجاد شد!\n\n"
+            f"🔢 شناسه فایل: {file_id}\n"
+            f"📄 عنوان: {file_info['title']}\n"
+            f"🔖 نوع: {file_info['type']}\n\n"
+            f"🔗 لینک:\n<code>{share_link}</code>\n\n"
+            f"کاربران با کلیک روی این لینک وارد ربات می‌شوند و فایل بلافاصله برای آن‌ها ارسال می‌شود.",
+            call.message.chat.id,
+            call.message.message_id,
+            parse_mode="HTML",
+            reply_markup=markup
+        )
+    else:
+        bot.answer_callback_query(call.id, "❌ فایل مورد نظر یافت نشد!", show_alert=True)
+
+@bot.callback_query_handler(func=lambda call: call.data.startswith("copy_link_"))
+def handle_copy_link(call):
+    file_id = call.data.replace("copy_link_", "")
+    bot_username = bot.get_me().username
+    share_link = f"https://t.me/{bot_username}?start={file_id}"
+
+    # پاسخ به کاربر و اطلاع از کپی شدن لینک
+    bot.answer_callback_query(call.id, "لینک در کلیپ‌بورد کپی شد!", show_alert=True)
+
+@bot.callback_query_handler(func=lambda call: call.data.startswith("preview_file_"))
+def handle_preview_file(call):
+    file_id = call.data.replace("preview_file_", "")
+    # ارسال پیش‌نمایش فایل به ادمین
+    send_file_to_user(call.message, file_id)
+
+def start_file_upload(call, file_type):
+    admin_states[call.from_user.id] = {'state': 'waiting_file', 'file_type': file_type}
     bot.edit_message_text(
-        f"➕ افزودن فایل به آموزش {get_tutorial_category_title(category_id)}\n\n"
+        f"📤 آپلود فایل ({file_type})\n\n"
         "لطفاً فایل مورد نظر را ارسال کنید:",
         call.message.chat.id,
         call.message.message_id
     )
+
+def show_uploaded_files(call):
+    data = load_data()
+    uploaded_files = data['uploaded_files']
+    if uploaded_files:
+        files_text = "📋 لیست فایل‌های آپلود شده:\n\n"
+        for file_id, file_info in uploaded_files.items():
+            files_text += f"📄 {file_info['title']} ({file_info['type']})\n"
+            files_text += f"🆔 شناسه: {file_id}\n\n"
+        bot.edit_message_text(
+            files_text,
+            call.message.chat.id,
+            call.message.message_id
+        )
+    else:
+        bot.edit_message_text(
+            "📋 لیست فایل‌های آپلود شده:\n\n"
+            "❌ هیچ فایلی آپلود نشده است!",
+            call.message.chat.id,
+            call.message.message_id
+        )
+
+
+def start_create_share_link(call):
+    data = load_data()
+    if not data.get('uploaded_files'):
+        bot.answer_callback_query(call.id, "هیچ فایلی برای اشتراک‌گذاری وجود ندارد!", show_alert=True)
+        return
+
+    # ایجاد کیبورد برای انتخاب فایل از لیست
+    markup = types.InlineKeyboardMarkup(row_width=1)
+    for file_id, file_info in data['uploaded_files'].items():
+        btn = types.InlineKeyboardButton(
+            f"📄 {file_info['title']} ({file_info['type']})",
+            callback_data=f"share_file_{file_id}"
+        )
+        markup.add(btn)
+
+    back_btn = types.InlineKeyboardButton("🔙 بازگشت", callback_data="admin_file_uploader")
+    markup.add(back_btn)
+
+    bot.edit_message_text(
+        "🔗 ایجاد لینک اشتراک‌گذاری\n\n"
+        "لطفاً فایل مورد نظر را از لیست زیر انتخاب کنید:",
+        call.message.chat.id,
+        call.message.message_id,
+        reply_markup=markup
+    )
+
+@bot.callback_query_handler(func=lambda call: call.data.startswith("share_file_"))
+def handle_share_file_selection(call):
+    file_id = call.data.replace("share_file_", "")
+    data = load_data()
+
+    if file_id in data['uploaded_files']:
+        bot_username = bot.get_me().username
+        share_link = f"https://t.me/{bot_username}?start={file_id}"
+
+        # کیبورد برای کپی لینک و بازگشت
+        markup = types.InlineKeyboardMarkup(row_width=1)
+        copy_btn = types.InlineKeyboardButton("📋 کپی لینک", callback_data=f"copy_link_{file_id}")
+        preview_btn = types.InlineKeyboardButton("👁️ پیش‌نمایش فایل", callback_data=f"preview_file_{file_id}")
+        back_btn = types.InlineKeyboardButton("🔙 بازگشت", callback_data="create_share_link")
+        markup.add(copy_btn, preview_btn, back_btn)
+
+        file_info = data['uploaded_files'][file_id]
+        bot.edit_message_text(
+            f"✅ لینک اشتراک‌گذاری ایجاد شد!\n\n"
+            f"🔢 شناسه فایل: {file_id}\n"
+            f"📄 عنوان: {file_info['title']}\n"
+            f"🔖 نوع: {file_info['type']}\n\n"
+            f"🔗 لینک:\n<code>{share_link}</code>\n\n"
+            f"کاربران با کلیک روی این لینک وارد ربات می‌شوند و فایل بلافاصله برای آن‌ها ارسال می‌شود.",
+            call.message.chat.id,
+            call.message.message_id,
+            parse_mode="HTML",
+            reply_markup=markup
+        )
+    else:
+        bot.answer_callback_query(call.id, "❌ فایل مورد نظر یافت نشد!", show_alert=True)
+
+@bot.callback_query_handler(func=lambda call: call.data.startswith("copy_link_"))
+def handle_copy_link(call):
+    file_id = call.data.replace("copy_link_", "")
+    bot_username = bot.get_me().username
+    share_link = f"https://t.me/{bot_username}?start={file_id}"
+
+    # پاسخ به کاربر و اطلاع از کپی شدن لینک
+    bot.answer_callback_query(call.id, "لینک در کلیپ‌بورد کپی شد!", show_alert=True)
+
+@bot.callback_query_handler(func=lambda call: call.data.startswith("preview_file_"))
+def handle_preview_file(call):
+    file_id = call.data.replace("preview_file_", "")
+    # ارسال پیش‌نمایش فایل به ادمین
+    send_file_to_user(call.message, file_id)
 
 @bot.message_handler(func=lambda message: message.from_user.id in admin_states and admin_states[message.from_user.id]['state'] == 'waiting_file')
 def handle_file_upload(message):
@@ -1526,7 +1739,6 @@ def handle_file_upload(message):
     bot.send_message(message.chat.id, f"✅ فایل با شناسه {file_id} با موفقیت آپلود شد.")
     del admin_states[message.from_user.id]
     admin_panel(message)
-
 
 @bot.message_handler(func=lambda message: message.from_user.id in admin_states and admin_states[message.from_user.id]['state'] == 'waiting_file_id')
 def handle_create_share_link(message):
@@ -2132,6 +2344,185 @@ def handle_gift_all_users(message):
             "⚠️ لطفاً یک عدد صحیح وارد کنید یا /cancel را برای لغو وارد کنید."
         )
 
+# توابع مدیریتی پنل ادمین
+def handle_tickets_menu(call):
+    markup = types.InlineKeyboardMarkup(row_width=1)
+    back_btn = types.InlineKeyboardButton("🔙 بازگشت", callback_data="admin_back")
+    markup.add(back_btn)
+    
+    bot.edit_message_text(
+        "💬 مدیریت تیکت‌ها\n\n"
+        "این بخش در حال توسعه است.",
+        call.message.chat.id,
+        call.message.message_id,
+        reply_markup=markup
+    )
+
+def handle_discount_menu(call):
+    bot.edit_message_text(
+        "🏷️ مدیریت کدهای تخفیف\n\n"
+        "در این بخش می‌توانید کدهای تخفیف را مدیریت کنید.",
+        call.message.chat.id,
+        call.message.message_id,
+        reply_markup=get_discount_keyboard()
+    )
+
+def handle_users_menu(call):
+    bot.edit_message_text(
+        "👥 مدیریت کاربران\n\n"
+        "در این بخش می‌توانید کاربران را مدیریت کنید.",
+        call.message.chat.id,
+        call.message.message_id,
+        reply_markup=get_users_management_keyboard()
+    )
+
+def handle_servers_menu(call):
+    bot.edit_message_text(
+        "🖥️ مدیریت سرورها\n\n"
+        "در این بخش می‌توانید سرورها را مدیریت کنید.",
+        call.message.chat.id,
+        call.message.message_id,
+        reply_markup=get_advanced_server_management_keyboard()
+    )
+
+def handle_payment_settings_menu(call):
+    data = load_data()
+    current_card = data['settings']['payment_card']
+    
+    markup = types.InlineKeyboardMarkup(row_width=1)
+    btn1 = types.InlineKeyboardButton("💳 تغییر شماره کارت", callback_data="change_card_number")
+    back_btn = types.InlineKeyboardButton("🔙 بازگشت", callback_data="admin_back")
+    markup.add(btn1, back_btn)
+    
+    bot.edit_message_text(
+        f"💰 تنظیمات پرداخت\n\n"
+        f"شماره کارت فعلی: <code>{current_card}</code>",
+        call.message.chat.id,
+        call.message.message_id,
+        reply_markup=markup,
+        parse_mode="HTML"
+    )
+
+def handle_stats_menu(call):
+    data = load_data()
+    
+    # محاسبه آمار
+    total_users = len(data['users'])
+    total_dns = sum(len(user['dns_configs']) for user in data['users'].values())
+    total_vpn = sum(len(user['wireguard_configs']) for user in data['users'].values())
+    total_balance = sum(user['balance'] for user in data['users'].values())
+    
+    markup = types.InlineKeyboardMarkup(row_width=1)
+    back_btn = types.InlineKeyboardButton("🔙 بازگشت", callback_data="admin_back")
+    markup.add(back_btn)
+    
+    bot.edit_message_text(
+        f"📊 آمار ربات\n\n"
+        f"👥 تعداد کل کاربران: {total_users}\n"
+        f"🌐 تعداد DNS فروخته شده: {total_dns}\n"
+        f"🔒 تعداد VPN فروخته شده: {total_vpn}\n"
+        f"💰 مجموع موجودی کاربران: {total_balance} تومان",
+        call.message.chat.id,
+        call.message.message_id,
+        reply_markup=markup
+    )
+
+def handle_referral_menu(call):
+    data = load_data()
+    current_reward = data['settings']['referral_reward']
+    
+    markup = types.InlineKeyboardMarkup(row_width=1)
+    btn1 = types.InlineKeyboardButton(f"🎁 تغییر مبلغ پاداش (فعلی: {current_reward} تومان)", callback_data="change_referral_reward")
+    back_btn = types.InlineKeyboardButton("🔙 بازگشت", callback_data="admin_back")
+    markup.add(btn1, back_btn)
+    
+    bot.edit_message_text(
+        "👥 مدیریت سیستم دعوت\n\n"
+        "در این بخش می‌توانید تنظیمات سیستم دعوت را مدیریت کنید.",
+        call.message.chat.id,
+        call.message.message_id,
+        reply_markup=markup
+    )
+
+def handle_transactions_menu(call):
+    bot.edit_message_text(
+        "💰 مدیریت تراکنش‌ها\n\n"
+        "در این بخش می‌توانید تراکنش‌ها را مدیریت کنید.",
+        call.message.chat.id,
+        call.message.message_id,
+        reply_markup=get_transaction_management_keyboard()
+    )
+
+def handle_services_menu(call):
+    bot.edit_message_text(
+        "🛠️ مدیریت سرویس‌ها\n\n"
+        "در این بخش می‌توانید سرویس‌های DNS و VPN را مدیریت کنید.",
+        call.message.chat.id,
+        call.message.message_id,
+        reply_markup=get_service_management_keyboard()
+    )
+
+def handle_add_admin_menu(call):
+    admin_states[call.from_user.id] = {'state': 'waiting_admin_id'}
+    
+    bot.edit_message_text(
+        "➕ افزودن ادمین جدید\n\n"
+        "لطفاً شناسه کاربری (آیدی عددی) ادمین جدید را وارد کنید:",
+        call.message.chat.id,
+        call.message.message_id
+    )
+
+def handle_blocked_users_menu(call):
+    data = load_data()
+    blocked_users = data.get('blocked_users', [])
+    
+    markup = types.InlineKeyboardMarkup(row_width=1)
+    btn1 = types.InlineKeyboardButton("➕ مسدود کردن کاربر جدید", callback_data="block_user")
+    back_btn = types.InlineKeyboardButton("🔙 بازگشت", callback_data="admin_back")
+    markup.add(btn1, back_btn)
+    
+    if blocked_users:
+        blocked_text = "🚫 لیست کاربران مسدود شده:\n\n"
+        for user_id in blocked_users:
+            user_info = data['users'].get(str(user_id), {})
+            name = user_info.get('first_name', 'کاربر ناشناس')
+            blocked_text += f"🆔 {user_id} - {name}\n"
+    else:
+        blocked_text = "🚫 لیست کاربران مسدود شده خالی است."
+    
+    bot.edit_message_text(
+        blocked_text,
+        call.message.chat.id,
+        call.message.message_id,
+        reply_markup=markup
+    )
+
+def handle_export_excel_menu(call):
+    markup = types.InlineKeyboardMarkup(row_width=1)
+    btn1 = types.InlineKeyboardButton("📊 گزارش کاربران", callback_data="export_users")
+    btn2 = types.InlineKeyboardButton("💰 گزارش تراکنش‌ها", callback_data="export_transactions")
+    back_btn = types.InlineKeyboardButton("🔙 بازگشت", callback_data="admin_back")
+    markup.add(btn1, btn2, back_btn)
+    
+    bot.edit_message_text(
+        "📊 گزارش اکسل\n\n"
+        "لطفاً نوع گزارش مورد نظر خود را انتخاب کنید:",
+        call.message.chat.id,
+        call.message.message_id,
+        reply_markup=markup
+    )
+
+def start_add_tutorial_file(call):
+    category_id = call.data.replace("add_tutorial_", "")
+    admin_states[call.from_user.id] = {'state': 'waiting_tutorial_file', 'category_id': category_id}
+    
+    bot.edit_message_text(
+        f"📤 افزودن فایل به دسته‌بندی {get_tutorial_category_title(category_id)}\n\n"
+        "لطفاً فایل مورد نظر را ارسال کنید (عکس، فیلم یا سند):",
+        call.message.chat.id,
+        call.message.message_id
+    )
+
 # Start the bot
 if __name__ == "__main__":
     logger.info("Bot has deployed successfully✅")
@@ -2143,3 +2534,32 @@ if __name__ == "__main__":
     # Start bot polling with skip_pending to avoid conflict and timeout parameter
     # Add allowed_updates to optimize requests and prevent conflicts
     bot.polling(none_stop=True, skip_pending=True, timeout=30, allowed_updates=["message", "callback_query"])
+
+def handle_change_card_number_callback(call):
+    admin_states[call.from_user.id] = {'state': 'waiting_card_number'}
+    data = load_data()
+    current_card = data['settings']['payment_card']
+
+    bot.edit_message_text(
+        f"💳 تغییر شماره کارت\n\n"
+        f"شماره کارت فعلی: <code>{current_card}</code>\n\n"
+        f"لطفاً شماره کارت جدید را وارد کنید:",
+        call.message.chat.id,
+        call.message.message_id,
+        parse_mode="HTML"
+    )
+
+def handle_broadcast_menu(call):
+    markup = types.InlineKeyboardMarkup(row_width=1)
+    btn1 = types.InlineKeyboardButton("📢 ارسال پیام به همه کاربران", callback_data="broadcast_all")
+    btn2 = types.InlineKeyboardButton("📊 مشاهده پیام‌های قبلی", callback_data="view_broadcasts")
+    back_btn = types.InlineKeyboardButton("🔙 بازگشت", callback_data="admin_back")
+    markup.add(btn1, btn2, back_btn)
+
+    bot.edit_message_text(
+        "📢 مدیریت پیام‌های سراسری\n\n"
+        "از این بخش می‌توانید به تمام کاربران ربات پیام ارسال کنید یا پیام‌های قبلی را مشاهده نمایید.",
+        call.message.chat.id,
+        call.message.message_id,
+        reply_markup=markup
+    )

@@ -54,9 +54,10 @@ def get_enhanced_admin_keyboard():
     btn11 = types.InlineKeyboardButton("➕ افزودن ادمین", callback_data="admin_add_admin")
     btn12 = types.InlineKeyboardButton("🚫 کاربران مسدود", callback_data="admin_blocked_users")
 
-    # گزارش و آموزش
+    # گزارش، آموزش و آپلودر فایل
     btn13 = types.InlineKeyboardButton("📊 گزارش اکسل", callback_data="admin_export_excel")
     btn14 = types.InlineKeyboardButton("📚 آموزش‌ها", callback_data="admin_tutorials")
+    btn_uploader = types.InlineKeyboardButton("📤 آپلودر فایل", callback_data="admin_file_uploader")
     
     # بازگشت
     btn15 = types.InlineKeyboardButton("🏠 بازگشت به اصلی", callback_data="back_to_main")
@@ -69,6 +70,7 @@ def get_enhanced_admin_keyboard():
     markup.add(btn9, btn10)
     markup.add(btn11, btn12)
     markup.add(btn13, btn14)
+    markup.add(btn_uploader)
     markup.add(btn15)
 
     return markup
