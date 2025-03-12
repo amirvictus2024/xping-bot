@@ -408,33 +408,46 @@ def welcome_message(message):
             file_info = data['uploaded_files'][file_id]
             file_path = os.path.join(FILES_DIR, file_id)
 
-            # First send the welcome message
-            welcome_text = (
+            # ابتدا پیام "در حال ارسال فایل" را نمایش بدهیم
+            sending_message = bot.send_message(
+                message.chat.id, 
                 f"👋 سلام {message.from_user.first_name} عزیز!\n\n"
-                "🌟 به ربات فروش DNS اختصاصی و سرورهای VPN خوش آمدید!\n\n"
-                "💻 از طریق این ربات می‌توانید:\n"
-                "- DNS اختصاصی با IP معتبر خریداری کنید\n"
-                "- VPN اختصاصی خریداری کنید\n"
-                "- از سرورهای رایگان VPN استفاده کنید\n"
-                "- دوستان خود را دعوت کرده و پاداش دریافت کنید\n\n"
-                "🚀 برای شروع، از منوی زیر گزینه مورد نظر خود را انتخاب کنید."
+                "در حال آماده‌سازی و ارسال فایل درخواستی شما..."
             )
 
-            # Add admin notification
-            if check_admin(message.from_user.id):
-                welcome_text += "\n\n⚠️ شما دسترسی مدیریت دارید. برای ورود به پنل مدیریت از دکمه پنل مدیریت استفاده کنید."
-
-            bot.send_message(message.chat.id, welcome_text, reply_markup=get_main_keyboard())
-
-            # Now send the requested file
+            # ارسال فایل به کاربر با استفاده از file_id اصلی
             logger.info(f"🔗 User {message.from_user.id} requested file with ID: {file_id}")
-            with open(file_path, 'rb') as f:
+            
+            # استفاده از file_id ذخیره شده در اطلاعات فایل (اگر موجود باشد)
+            if 'telegram_file_id' in file_info:
                 if file_info['type'] == 'photo':
-                    bot.send_photo(message.chat.id, f, caption=file_info.get('caption', ''))
+                    sent_file = bot.send_photo(message.chat.id, file_info['telegram_file_id'], caption=file_info.get('caption', ''))
                 elif file_info['type'] == 'video':
-                    bot.send_video(message.chat.id, f, caption=file_info.get('caption', ''))
+                    sent_file = bot.send_video(message.chat.id, file_info['telegram_file_id'], caption=file_info.get('caption', ''))
                 elif file_info['type'] == 'document':
-                    bot.send_document(message.chat.id, f, caption=file_info.get('caption', ''))
+                    sent_file = bot.send_document(message.chat.id, file_info['telegram_file_id'], caption=file_info.get('caption', ''))
+            # اگر file_id تلگرام ذخیره نشده باشد، از فایل ذخیره شده استفاده می‌کنیم
+            else:
+                with open(file_path, 'rb') as f:
+                    if file_info['type'] == 'photo':
+                        sent_file = bot.send_photo(message.chat.id, f, caption=file_info.get('caption', ''))
+                    elif file_info['type'] == 'video':
+                        sent_file = bot.send_video(message.chat.id, f, caption=file_info.get('caption', ''))
+                    elif file_info['type'] == 'document':
+                        sent_file = bot.send_document(message.chat.id, f, caption=file_info.get('caption', ''))
+            
+            # ایجاد دکمه برای رفتن به منوی اصلی
+            markup = types.InlineKeyboardMarkup(row_width=1)
+            main_menu_btn = types.InlineKeyboardButton("🏠 رفتن به منوی اصلی", callback_data="show_main_menu")
+            markup.add(main_menu_btn)
+            
+            # ارسال پیام تکمیلی با دکمه منوی اصلی
+            bot.send_message(
+                message.chat.id,
+                f"✅ فایل «{file_info.get('title', 'درخواستی')}» با موفقیت ارسال شد!\n\n"
+                "برای دسترسی به امکانات ربات، می‌توانید به منوی اصلی بروید.",
+                reply_markup=markup
+            )
             return
 
         # Check if it's a referral code
@@ -493,12 +506,12 @@ def admin_panel(message):
 def get_file_uploader_keyboard():
     markup = types.InlineKeyboardMarkup(row_width=2)
 
-    btn1 = types.InlineKeyboardButton("🖼️ تصویر", callback_data="upload_photo")
-    btn2 = types.InlineKeyboardButton("🎥 ویدیو", callback_data="upload_video")
-    btn3 = types.InlineKeyboardButton("📄 فایل", callback_data="upload_document")
+    btn1 = types.InlineKeyboardButton("🖼️ آپلود تصویر", callback_data="upload_photo")
+    btn2 = types.InlineKeyboardButton("🎥 آپلود ویدیو", callback_data="upload_video")
+    btn3 = types.InlineKeyboardButton("📄 آپلود فایل", callback_data="upload_document")
     btn4 = types.InlineKeyboardButton("📋 لیست فایل‌ها", callback_data="list_files")
     btn5 = types.InlineKeyboardButton("🔗 ایجاد لینک اشتراک‌گذاری", callback_data="create_share_link")
-    btn6 = types.InlineKeyboardButton("🔙 بازگشت", callback_data="admin_back")
+    btn6 = types.InlineKeyboardButton("🔙 بازگشت به پنل مدیریت", callback_data="admin_back")
 
     markup.add(btn1, btn2, btn3)
     markup.add(btn4, btn5)
@@ -703,6 +716,7 @@ def callback_handler(call):
         "menu_referral": lambda: show_referral_info(call.message, call.from_user.id),
         "menu_tutorials": lambda: show_tutorial_categories(call.message),
         "menu_rules": lambda: show_rules(call.message),
+        "show_main_menu": lambda: welcome_new_user(call.message, call.from_user.id),
 
         # Back to main menu
         "back_to_main": lambda: bot.edit_message_text(
@@ -724,6 +738,11 @@ def callback_handler(call):
     if call.data in callback_handlers:
         return callback_handlers[call.data]()
 
+    # Handle file deletion
+    elif call.data.startswith("delete_file_"):
+        handle_delete_file(call)
+        return
+        
     # Handle payment plan selection
     elif call.data.startswith("payment_plan_"):
         handle_payment_plan_selection(call)
@@ -1648,45 +1667,61 @@ def handle_gift_all_users_menu(call):
 
 def start_file_upload(call, file_type):
     admin_states[call.from_user.id] = {'state': 'waiting_file', 'file_type': file_type}
+    
+    file_type_persian = {
+        'photo': 'تصویر',
+        'video': 'ویدیو',
+        'document': 'فایل'
+    }.get(file_type, file_type)
+    
     bot.edit_message_text(
-        f"📤 آپلود فایل ({file_type})\n\n"
-        "لطفاً فایل مورد نظر را ارسال کنید:",
+        f"📤 آپلود {file_type_persian}\n\n"
+        f"لطفاً {file_type_persian} مورد نظر را ارسال کنید.\n"
+        "برای فایل‌های تصویری و ویدیویی می‌توانید در قسمت کپشن، عنوان دلخواه را وارد کنید.",
         call.message.chat.id,
         call.message.message_id
     )
 
 def show_uploaded_files(call):
     data = load_data()
-    uploaded_files = data['uploaded_files']
+    uploaded_files = data.get('uploaded_files', {})
+    
+    markup = types.InlineKeyboardMarkup(row_width=1)
+    
     if uploaded_files:
         files_text = "📋 لیست فایل‌های آپلود شده:\n\n"
-        for file_id, file_info in uploaded_files.items():
-            files_text += f"📄 {file_info['title']} ({file_info['type']})\n"
-            files_text += f"🆔 شناسه: {file_id}\n\n"
+        # محدود کردن به 20 فایل آخر برای جلوگیری از طولانی شدن پیام
+        sorted_files = sorted(uploaded_files.items(), key=lambda x: x[0], reverse=True)[:20]
         
-        # افزودن دکمه بازگشت به لیست
-        markup = types.InlineKeyboardMarkup(row_width=1)
-        back_btn = types.InlineKeyboardButton("🔙 بازگشت", callback_data="admin_file_uploader")
-        markup.add(back_btn)
+        for file_id, file_info in sorted_files:
+            file_type_icon = "🖼️" if file_info['type'] == 'photo' else "🎥" if file_info['type'] == 'video' else "📄"
+            files_text += f"{file_type_icon} {file_info['title']} ({file_info['type']})\n"
+            files_text += f"🆔 شناسه: <code>{file_id}</code>\n\n"
         
-        bot.edit_message_text(
-            files_text,
-            call.message.chat.id,
-            call.message.message_id,
-            reply_markup=markup
-        )
+        if len(uploaded_files) > 20:
+            files_text += f"و {len(uploaded_files) - 20} فایل دیگر...\n\n"
+        
+        # اضافه کردن دکمه برای پیش‌نمایش فایل‌ها
+        for file_id, file_info in sorted_files[:5]:  # نمایش 5 فایل اخیر
+            btn = types.InlineKeyboardButton(
+                f"👁️ پیش‌نمایش: {file_info['title'][:20]}", 
+                callback_data=f"preview_file_{file_id}"
+            )
+            markup.add(btn)
     else:
-        markup = types.InlineKeyboardMarkup(row_width=1)
-        back_btn = types.InlineKeyboardButton("🔙 بازگشت", callback_data="admin_file_uploader")
-        markup.add(back_btn)
-        
-        bot.edit_message_text(
-            "📋 لیست فایل‌های آپلود شده:\n\n"
-            "❌ هیچ فایلی آپلود نشده است!",
-            call.message.chat.id,
-            call.message.message_id,
-            reply_markup=markup
-        )
+        files_text = "📋 لیست فایل‌های آپلود شده:\n\n❌ هیچ فایلی آپلود نشده است!"
+    
+    # افزودن دکمه‌های مدیریتی
+    back_btn = types.InlineKeyboardButton("🔙 بازگشت به آپلودر", callback_data="admin_file_uploader")
+    markup.add(back_btn)
+    
+    bot.edit_message_text(
+        files_text,
+        call.message.chat.id,
+        call.message.message_id,
+        reply_markup=markup,
+        parse_mode="HTML"
+    )
 
 def start_create_share_link(call):
     data = load_data()
@@ -1760,27 +1795,85 @@ def handle_preview_file(call):
     file_id = call.data.replace("preview_file_", "")
     # ارسال پیش‌نمایش فایل به ادمین
     send_file_to_user(call.message, file_id)
+
+def handle_delete_file(call):
+    file_id = call.data.replace("delete_file_", "")
+    data = load_data()
+    
+    if file_id in data.get('uploaded_files', {}):
+        # بررسی استفاده فایل در آموزش‌ها
+        is_used = False
+        for category in data['tutorials'].values():
+            if file_id in category['files']:
+                is_used = True
+                break
+        
+        if is_used:
+            bot.answer_callback_query(call.id, "⛔️ این فایل در آموزش‌ها استفاده شده و قابل حذف نیست!", show_alert=True)
+            return
+            
+        # حذف فایل فیزیکی
+        try:
+            file_path = os.path.join(FILES_DIR, file_id)
+            if os.path.exists(file_path):
+                os.remove(file_path)
+        except Exception as e:
+            logger.error(f"Error deleting file {file_id}: {e}")
+            
+        # حذف از دیتابیس
+        del data['uploaded_files'][file_id]
+        save_data(data)
+        
+        bot.answer_callback_query(call.id, "✅ فایل با موفقیت حذف شد!", show_alert=True)
+        # بروزرسانی لیست فایل‌ها
+        show_uploaded_files(call)
+    else:
+        bot.answer_callback_query(call.id, "❌ فایل مورد نظر یافت نشد!", show_alert=True)
 
 def show_uploaded_files(call):
     data = load_data()
-    uploaded_files = data['uploaded_files']
+    uploaded_files = data.get('uploaded_files', {})
+    
+    markup = types.InlineKeyboardMarkup(row_width=2)
+    
     if uploaded_files:
         files_text = "📋 لیست فایل‌های آپلود شده:\n\n"
-        for file_id, file_info in uploaded_files.items():
-            files_text += f"📄 {file_info['title']} ({file_info['type']})\n"
-            files_text += f"🆔 شناسه: {file_id}\n\n"
-        bot.edit_message_text(
-            files_text,
-            call.message.chat.id,
-            call.message.message_id
-        )
+        # محدود کردن به 20 فایل آخر برای جلوگیری از طولانی شدن پیام
+        sorted_files = sorted(uploaded_files.items(), key=lambda x: x[0], reverse=True)[:20]
+        
+        for file_id, file_info in sorted_files:
+            file_type_icon = "🖼️" if file_info['type'] == 'photo' else "🎥" if file_info['type'] == 'video' else "📄"
+            files_text += f"{file_type_icon} {file_info['title']} ({file_info['type']})\n"
+            files_text += f"🆔 شناسه: <code>{file_id}</code>\n\n"
+        
+        if len(uploaded_files) > 20:
+            files_text += f"و {len(uploaded_files) - 20} فایل دیگر...\n\n"
+        
+        # اضافه کردن دکمه‌ها برای هر فایل
+        for file_id, file_info in sorted_files[:5]:  # نمایش 5 فایل اخیر
+            preview_btn = types.InlineKeyboardButton(
+                f"👁️ پیش‌نمایش: {file_info['title'][:15]}", 
+                callback_data=f"preview_file_{file_id}"
+            )
+            delete_btn = types.InlineKeyboardButton(
+                f"🗑️ حذف", 
+                callback_data=f"delete_file_{file_id}"
+            )
+            markup.add(preview_btn, delete_btn)
     else:
-        bot.edit_message_text(
-            "📋 لیست فایل‌های آپلود شده:\n\n"
-            "❌ هیچ فایلی آپلود نشده است!",
-            call.message.chat.id,
-            call.message.message_id
-        )
+        files_text = "📋 لیست فایل‌های آپلود شده:\n\n❌ هیچ فایلی آپلود نشده است!"
+    
+    # افزودن دکمه بازگشت
+    back_btn = types.InlineKeyboardButton("🔙 بازگشت به آپلودر", callback_data="admin_file_uploader")
+    markup.add(back_btn)
+    
+    bot.edit_message_text(
+        files_text,
+        call.message.chat.id,
+        call.message.message_id,
+        reply_markup=markup,
+        parse_mode="HTML"
+    )
 
 
 def start_create_share_link(call):
@@ -1856,68 +1949,124 @@ def handle_preview_file(call):
     # ارسال پیش‌نمایش فایل به ادمین
     send_file_to_user(call.message, file_id)
 
-@bot.message_handler(func=lambda message: message.from_user.id in admin_states and admin_states[message.from_user.id]['state'] == 'waiting_file')
+@bot.message_handler(content_types=['photo', 'video', 'document'], func=lambda message: message.from_user.id in admin_states and admin_states[message.from_user.id]['state'] == 'waiting_file')
 def handle_file_upload(message):
     admin_state = admin_states[message.from_user.id]
     file_type = admin_state['file_type']
     data = load_data()
+    success = False
+    file_id = None
 
-    if file_type == 'photo' and message.content_type == 'photo':
-        file_id = generate_file_id()
-        file_path = os.path.join(FILES_DIR, file_id)
-        file_info = bot.download_file(bot.get_file(message.photo[-1].file_id).file_path)
-        with open(file_path, 'wb') as f:
-            f.write(file_info)
-        data['uploaded_files'][file_id] = {'type': 'photo', 'title': message.caption or file_id, 'caption': message.caption}
-        success = True
-    elif file_type == 'video' and message.content_type == 'video':
-        file_id = generate_file_id()
-        file_path = os.path.join(FILES_DIR, file_id)
-        file_info = bot.download_file(bot.get_file(message.video.file_id).file_path)
-        with open(file_path, 'wb') as f:
-            f.write(file_info)
-        data['uploaded_files'][file_id] = {'type': 'video', 'title': message.caption or file_id, 'caption': message.caption}
-        success = True
-    elif file_type == 'document' and message.content_type == 'document':
-        file_id = generate_file_id()
-        file_path = os.path.join(FILES_DIR, file_id)
-        file_info = bot.download_file(bot.get_file(message.document.file_id).file_path)
-        with open(file_path, 'wb') as f:
-            f.write(file_info)
-        data['uploaded_files'][file_id] = {'type': 'document', 'title': message.document.file_name, 'caption': message.caption}
-        success = True
-    else:
-        bot.send_message(message.chat.id, "❌ نوع فایل پشتیبانی نمی‌شود. لطفاً فایل صحیحی ارسال کنید.")
+    try:
+        logger.info(f"Received file upload: content_type={message.content_type}, file_type={file_type}")
+        
+        if file_type == 'photo' and message.content_type == 'photo':
+            file_id = generate_file_id()
+            file_path = os.path.join(FILES_DIR, file_id)
+            telegram_file_id = message.photo[-1].file_id  # ذخیره file_id تلگرام
+            file_info = bot.get_file(telegram_file_id)
+            downloaded_file = bot.download_file(file_info.file_path)
+            with open(file_path, 'wb') as f:
+                f.write(downloaded_file)
+            data['uploaded_files'][file_id] = {
+                'type': 'photo', 
+                'title': message.caption or file_id, 
+                'caption': message.caption,
+                'telegram_file_id': telegram_file_id  # ذخیره file_id تلگرام
+            }
+            success = True
+            
+        elif file_type == 'video' and message.content_type == 'video':
+            file_id = generate_file_id()
+            file_path = os.path.join(FILES_DIR, file_id)
+            telegram_file_id = message.video.file_id  # ذخیره file_id تلگرام
+            file_info = bot.get_file(telegram_file_id)
+            downloaded_file = bot.download_file(file_info.file_path)
+            with open(file_path, 'wb') as f:
+                f.write(downloaded_file)
+            data['uploaded_files'][file_id] = {
+                'type': 'video', 
+                'title': message.caption or file_id, 
+                'caption': message.caption,
+                'telegram_file_id': telegram_file_id  # ذخیره file_id تلگرام
+            }
+            success = True
+            
+        elif file_type == 'document' and message.content_type == 'document':
+            file_id = generate_file_id()
+            file_path = os.path.join(FILES_DIR, file_id)
+            telegram_file_id = message.document.file_id  # ذخیره file_id تلگرام
+            file_info = bot.get_file(telegram_file_id)
+            downloaded_file = bot.download_file(file_info.file_path)
+            with open(file_path, 'wb') as f:
+                f.write(downloaded_file)
+            
+            # نمایش نام فایل اصلی
+            file_name = message.document.file_name
+            data['uploaded_files'][file_id] = {
+                'type': 'document', 
+                'title': message.caption or file_name or file_id, 
+                'caption': message.caption,
+                'original_filename': file_name,
+                'telegram_file_id': telegram_file_id  # ذخیره file_id تلگرام
+            }
+            success = True
+            
+        else:
+            bot.send_message(
+                message.chat.id, 
+                f"❌ نوع فایل ارسالی ({message.content_type}) با نوع درخواستی ({file_type}) مطابقت ندارد.\n"
+                "لطفاً نوع فایل صحیح را ارسال کنید یا به پنل مدیریت برگردید."
+            )
+            return
+            
+    except Exception as e:
+        logger.error(f"Error uploading file: {e}")
+        bot.send_message(message.chat.id, f"❌ خطا در آپلود فایل: {str(e)}")
         return
 
     save_data(data)
     
     if success:
         # ارسال پیام موفقیت‌آمیز بودن آپلود
-        confirm_message = bot.send_message(
+        filename_info = ""
+        if message.content_type == 'document':
+            filename_info = f"\n📄 نام فایل اصلی: {message.document.file_name}"
+            
+        bot.send_message(
             message.chat.id, 
             f"✅ فایل با موفقیت آپلود شد!\n\n"
             f"🆔 شناسه فایل: {file_id}\n"
-            f"🔖 نوع فایل: {file_type}\n"
+            f"🔖 نوع فایل: {file_type}{filename_info}\n"
             f"📝 عنوان: {data['uploaded_files'][file_id]['title']}"
+        )
+        
+        # پیش‌نمایش فایل
+        try:
+            if file_type == 'photo':
+                with open(os.path.join(FILES_DIR, file_id), 'rb') as f:
+                    bot.send_photo(message.chat.id, f, caption=f"پیش‌نمایش فایل آپلود شده: {data['uploaded_files'][file_id]['title']}")
+            elif file_type == 'video':
+                with open(os.path.join(FILES_DIR, file_id), 'rb') as f:
+                    bot.send_video(message.chat.id, f, caption=f"پیش‌نمایش فایل آپلود شده: {data['uploaded_files'][file_id]['title']}")
+            elif file_type == 'document':
+                with open(os.path.join(FILES_DIR, file_id), 'rb') as f:
+                    bot.send_document(message.chat.id, f, caption=f"پیش‌نمایش فایل آپلود شده: {data['uploaded_files'][file_id]['title']}")
+        except Exception as e:
+            logger.error(f"Error sending preview: {e}")
+            bot.send_message(message.chat.id, "❌ خطا در ارسال پیش‌نمایش فایل.")
+        
+        # برگشت به منوی آپلودر فایل
+        markup = get_file_uploader_keyboard()
+        bot.send_message(
+            message.chat.id,
+            "📤 آپلودر فایل\n\n"
+            "فایل با موفقیت آپلود شد. می‌توانید عملیات دیگری را انتخاب کنید یا به پنل مدیریت بازگردید:",
+            reply_markup=markup
         )
         
         # پاک کردن وضعیت ادمین
         del admin_states[message.from_user.id]
-        
-        # نمایش پنل ادمین بعد از چند ثانیه
-        # ارسال منوی اصلی ادمین
-        admin_text = (
-            "⚙️ پنل مدیریت\n\n"
-            "👨‍💻 خوش آمدید، ادمین گرامی!\n"
-            "لطفاً گزینه مورد نظر خود را انتخاب کنید:"
-        )
-        
-        bot.send_message(
-            message.chat.id,
-            admin_text,
-            reply_markup=get_admin_keyboard()
-        )
 
 @bot.message_handler(func=lambda message: message.from_user.id in admin_states and admin_states[message.from_user.id]['state'] == 'waiting_file_id')
 def handle_create_share_link(message):
@@ -1964,6 +2113,24 @@ def show_rules(message):
         message.message_id,
         reply_markup=markup
     )
+    
+# تابع برای نمایش منوی اصلی در پیام جدید (بدون ویرایش)
+def welcome_new_user(message, user_id):
+    welcome_text = (
+        f"👋 خوش آمدید!\n\n"
+        "✨ به ربات فروش DNS اختصاصی و سرورهای VPN خوش آمدید!\n\n"
+        "💻 از طریق این ربات می‌توانید:\n"
+        "- 🌐 DNS اختصاصی با IP معتبر خریداری کنید\n"
+        "- 🔒 VPN اختصاصی خریداری کنید\n"
+        "- 👥 دوستان خود را دعوت کرده و پاداش دریافت کنید\n\n"
+        "🚀 برای شروع، از منوی زیر گزینه مورد نظر خود را انتخاب کنید."
+    )
+
+    # Add admin notification
+    if check_admin(user_id):
+        welcome_text += f"\n\n⚠️ شما (با آیدی {user_id}) دسترسی مدیریت دارید. می‌توانید از دکمه «پنل مدیریت» استفاده کنید."
+
+    bot.send_message(message.chat.id, welcome_text, reply_markup=get_main_keyboard(user_id))
 
 def get_rules_text():
     try:
@@ -1991,17 +2158,28 @@ def send_file_to_user(message, file_id):
     data = load_data()
     if file_id in data.get('uploaded_files', {}):
         file_info = data['uploaded_files'][file_id]
-        file_path = os.path.join(FILES_DIR, file_id)
         try:
-            with open(file_path, 'rb') as f:
+            # اگر file_id تلگرام موجود باشد، از آن استفاده کنیم (روش سریع‌تر)
+            if 'telegram_file_id' in file_info:
                 if file_info['type'] == 'photo':
-                    bot.send_photo(message.chat.id, f, caption=file_info.get('caption', ''))
+                    bot.send_photo(message.chat.id, file_info['telegram_file_id'], caption=file_info.get('caption', ''))
                 elif file_info['type'] == 'video':
-                    bot.send_video(message.chat.id, f, caption=file_info.get('caption', ''))
+                    bot.send_video(message.chat.id, file_info['telegram_file_id'], caption=file_info.get('caption', ''))
                 elif file_info['type'] == 'document':
-                    bot.send_document(message.chat.id, f, caption=file_info.get('caption', ''))
-        except FileNotFoundError:
-            bot.send_message(message.chat.id, "متاسفانه فایل مورد نظر یافت نشد.")
+                    bot.send_document(message.chat.id, file_info['telegram_file_id'], caption=file_info.get('caption', ''))
+            # در غیر این صورت از فایل ذخیره شده استفاده کنیم
+            else:
+                file_path = os.path.join(FILES_DIR, file_id)
+                with open(file_path, 'rb') as f:
+                    if file_info['type'] == 'photo':
+                        bot.send_photo(message.chat.id, f, caption=file_info.get('caption', ''))
+                    elif file_info['type'] == 'video':
+                        bot.send_video(message.chat.id, f, caption=file_info.get('caption', ''))
+                    elif file_info['type'] == 'document':
+                        bot.send_document(message.chat.id, f, caption=file_info.get('caption', ''))
+        except Exception as e:
+            logger.error(f"Error sending file {file_id}: {e}")
+            bot.send_message(message.chat.id, "متاسفانه در ارسال فایل مورد نظر خطایی رخ داد.")
     else:
         bot.send_message(message.chat.id, "متاسفانه فایل مورد نظر یافت نشد.")
 
