@@ -1663,19 +1663,30 @@ def show_uploaded_files(call):
         for file_id, file_info in uploaded_files.items():
             files_text += f"📄 {file_info['title']} ({file_info['type']})\n"
             files_text += f"🆔 شناسه: {file_id}\n\n"
+        
+        # افزودن دکمه بازگشت به لیست
+        markup = types.InlineKeyboardMarkup(row_width=1)
+        back_btn = types.InlineKeyboardButton("🔙 بازگشت", callback_data="admin_file_uploader")
+        markup.add(back_btn)
+        
         bot.edit_message_text(
             files_text,
             call.message.chat.id,
-            call.message.message_id
+            call.message.message_id,
+            reply_markup=markup
         )
     else:
+        markup = types.InlineKeyboardMarkup(row_width=1)
+        back_btn = types.InlineKeyboardButton("🔙 بازگشت", callback_data="admin_file_uploader")
+        markup.add(back_btn)
+        
         bot.edit_message_text(
             "📋 لیست فایل‌های آپلود شده:\n\n"
             "❌ هیچ فایلی آپلود نشده است!",
             call.message.chat.id,
-            call.message.message_id
+            call.message.message_id,
+            reply_markup=markup
         )
-
 
 def start_create_share_link(call):
     data = load_data()
@@ -1749,15 +1760,6 @@ def handle_preview_file(call):
     file_id = call.data.replace("preview_file_", "")
     # ارسال پیش‌نمایش فایل به ادمین
     send_file_to_user(call.message, file_id)
-
-def start_file_upload(call, file_type):
-    admin_states[call.from_user.id] = {'state': 'waiting_file', 'file_type': file_type}
-    bot.edit_message_text(
-        f"📤 آپلود فایل ({file_type})\n\n"
-        "لطفاً فایل مورد نظر را ارسال کنید:",
-        call.message.chat.id,
-        call.message.message_id
-    )
 
 def show_uploaded_files(call):
     data = load_data()
@@ -1867,6 +1869,7 @@ def handle_file_upload(message):
         with open(file_path, 'wb') as f:
             f.write(file_info)
         data['uploaded_files'][file_id] = {'type': 'photo', 'title': message.caption or file_id, 'caption': message.caption}
+        success = True
     elif file_type == 'video' and message.content_type == 'video':
         file_id = generate_file_id()
         file_path = os.path.join(FILES_DIR, file_id)
@@ -1874,6 +1877,7 @@ def handle_file_upload(message):
         with open(file_path, 'wb') as f:
             f.write(file_info)
         data['uploaded_files'][file_id] = {'type': 'video', 'title': message.caption or file_id, 'caption': message.caption}
+        success = True
     elif file_type == 'document' and message.content_type == 'document':
         file_id = generate_file_id()
         file_path = os.path.join(FILES_DIR, file_id)
@@ -1881,14 +1885,39 @@ def handle_file_upload(message):
         with open(file_path, 'wb') as f:
             f.write(file_info)
         data['uploaded_files'][file_id] = {'type': 'document', 'title': message.document.file_name, 'caption': message.caption}
+        success = True
     else:
         bot.send_message(message.chat.id, "❌ نوع فایل پشتیبانی نمی‌شود. لطفاً فایل صحیحی ارسال کنید.")
         return
 
     save_data(data)
-    bot.send_message(message.chat.id, f"✅ فایل با شناسه {file_id} با موفقیت آپلود شد.")
-    del admin_states[message.from_user.id]
-    admin_panel(message)
+    
+    if success:
+        # ارسال پیام موفقیت‌آمیز بودن آپلود
+        confirm_message = bot.send_message(
+            message.chat.id, 
+            f"✅ فایل با موفقیت آپلود شد!\n\n"
+            f"🆔 شناسه فایل: {file_id}\n"
+            f"🔖 نوع فایل: {file_type}\n"
+            f"📝 عنوان: {data['uploaded_files'][file_id]['title']}"
+        )
+        
+        # پاک کردن وضعیت ادمین
+        del admin_states[message.from_user.id]
+        
+        # نمایش پنل ادمین بعد از چند ثانیه
+        # ارسال منوی اصلی ادمین
+        admin_text = (
+            "⚙️ پنل مدیریت\n\n"
+            "👨‍💻 خوش آمدید، ادمین گرامی!\n"
+            "لطفاً گزینه مورد نظر خود را انتخاب کنید:"
+        )
+        
+        bot.send_message(
+            message.chat.id,
+            admin_text,
+            reply_markup=get_admin_keyboard()
+        )
 
 @bot.message_handler(func=lambda message: message.from_user.id in admin_states and admin_states[message.from_user.id]['state'] == 'waiting_file_id')
 def handle_create_share_link(message):
