@@ -1,5 +1,5 @@
 
-pyTelegramBotApi==4.12.0
+pyTelegramBotApi==4.26.0
 ipaddress>=1.0.23
 python-telegram-bot
 pandas
